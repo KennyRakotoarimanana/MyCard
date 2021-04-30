@@ -94,11 +94,6 @@ import java.util.ArrayList;
             Toast.makeText(context, "This device does not support NFC", Toast.LENGTH_LONG).show();
             finish();
         }
-        try {
-            readFromIntent(getIntent());
-        } catch (JSONException e) {
-            e.printStackTrace();
-        }
         pendingIntent = PendingIntent.getActivity(this, 0, new Intent(this, getClass()).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP), 0);
         IntentFilter tagDetected = new IntentFilter(NfcAdapter.ACTION_TAG_DISCOVERED);
         tagDetected.addCategory(Intent.CATEGORY_DEFAULT);
@@ -109,11 +104,6 @@ import java.util.ArrayList;
     protected void onNewIntent(Intent intent) {
         super.onNewIntent(intent);
         setIntent(intent);
-        try {
-            readFromIntent(intent);
-        } catch (JSONException e) {
-            e.printStackTrace();
-        }
         if (NfcAdapter.ACTION_TAG_DISCOVERED.equals(intent.getAction())) {
             myTag = intent.getParcelableExtra(NfcAdapter.EXTRA_TAG);
         }
@@ -147,40 +137,6 @@ import java.util.ArrayList;
             nfcAdapter = NfcAdapter.getDefaultAdapter(this);
         }
         nfcAdapter.disableForegroundDispatch(this);
-    }
-
-    private void readFromIntent(Intent intent) throws JSONException {
-        String action = intent.getAction();
-        if (NfcAdapter.ACTION_TAG_DISCOVERED.equals(action)
-            || NfcAdapter.ACTION_TECH_DISCOVERED.equals(action)
-            || NfcAdapter.ACTION_NDEF_DISCOVERED.equals(action)) {
-            Parcelable[] rawMsgs = intent.getParcelableArrayExtra(NfcAdapter.EXTRA_NDEF_MESSAGES);
-            NdefMessage[] msgs = null;
-            if (rawMsgs != null) {
-                msgs = new NdefMessage[rawMsgs.length];
-                for (int i = 0; i < rawMsgs.length; i++) {
-                    msgs[i] = (NdefMessage) rawMsgs[i];
-                }
-            }
-            buildTagViews(msgs);
-        }
-    }
-
-    private void buildTagViews(NdefMessage[] msgs) throws JSONException {
-        if (msgs == null || msgs.length == 0) return;
-
-        String text = "";
-        byte[] payload = msgs[0].getRecords()[0].getPayload();
-        String textEncoding = ((payload[0] & 128) == 0) ? "UTF-8" : "UTF-16";
-        int languageCodeLength = payload[0] & 0063;
-
-        try {
-            text = new String(payload, languageCodeLength + 1, payload.length - languageCodeLength - 1, textEncoding);
-        } catch (Exception e) {
-            Log.e("UnsupportedEncoding", e.toString());
-        }
-        JSONObject contact = new JSONObject(text);
-        addContact(contact.getString("firstname"), contact.getString("lastname"), contact.getString("phone"), contact.getString("address"), contact.getString("email"));
     }
 
     private void write(String text, Tag tag) throws Exception {
@@ -225,21 +181,6 @@ import java.util.ArrayList;
 
         return recordNFC;
     }
-
-            private void contactPermission() {
-                boolean permissionOperation;
-                if (android.os.Build.VERSION.SDK_INT >= 23) {
-                    // only for gingerbread and newer versions
-                    String permission = Manifest.permission.WRITE_CONTACTS;
-                    if (checkSelfPermission(permission) != PackageManager.PERMISSION_GRANTED) {
-                        ActivityCompat.requestPermissions(DataFormActivity.this, new String[]{Manifest.permission.WRITE_CONTACTS, Manifest.permission.READ_CONTACTS}, 100);
-                    } else {
-                        permissionOperation = true;
-                    }
-                } else {
-                    permissionOperation = true;
-                }
-            }
 
             @Override
             public void onRequestPermissionsResult(int requestCode, String[] permissions, int[] grantResults) {
@@ -294,54 +235,4 @@ import java.util.ArrayList;
                     }
                 }
             }
-
-            private void addContact(String given_name, String name, String mobile, String home, String email) {
-                contactPermission();
-                ArrayList<ContentProviderOperation> contact = new ArrayList<ContentProviderOperation>();
-                contact.add(ContentProviderOperation.newInsert(ContactsContract.RawContacts.CONTENT_URI)
-                        .withValue(ContactsContract.RawContacts.ACCOUNT_TYPE, null)
-                        .withValue(ContactsContract.RawContacts.ACCOUNT_NAME, null)
-                        .build());
-
-                // first and last names
-                contact.add(ContentProviderOperation.newInsert(ContactsContract.Data.CONTENT_URI)
-                        .withValueBackReference(ContactsContract.RawContacts.Data.RAW_CONTACT_ID, 0)
-                        .withValue(ContactsContract.RawContacts.Data.MIMETYPE, ContactsContract.CommonDataKinds.StructuredName.CONTENT_ITEM_TYPE)
-                        .withValue(ContactsContract.CommonDataKinds.StructuredName.GIVEN_NAME, given_name)
-                        .withValue(ContactsContract.CommonDataKinds.StructuredName.FAMILY_NAME, name)
-                        .build());
-
-                // Contact No Mobile
-                contact.add(ContentProviderOperation.newInsert(ContactsContract.Data.CONTENT_URI)
-                        .withValueBackReference(ContactsContract.RawContacts.Data.RAW_CONTACT_ID, 0)
-                        .withValue(ContactsContract.Data.MIMETYPE, ContactsContract.CommonDataKinds.Phone.CONTENT_ITEM_TYPE)
-                        .withValue(ContactsContract.CommonDataKinds.Phone.NUMBER, mobile)
-                        .withValue(ContactsContract.CommonDataKinds.Phone.TYPE, ContactsContract.CommonDataKinds.Phone.TYPE_MOBILE)
-                        .build());
-
-                // Contact Home
-                contact.add(ContentProviderOperation.newInsert(ContactsContract.Data.CONTENT_URI)
-                        .withValueBackReference(ContactsContract.RawContacts.Data.RAW_CONTACT_ID, 0)
-                        .withValue(ContactsContract.Data.MIMETYPE, ContactsContract.CommonDataKinds.Phone.CONTENT_ITEM_TYPE)
-                        .withValue(ContactsContract.CommonDataKinds.Phone.NUMBER, home)
-                        .withValue(ContactsContract.CommonDataKinds.Phone.TYPE, ContactsContract.CommonDataKinds.Phone.TYPE_HOME)
-                        .build());
-
-                // Email    `
-                contact.add(ContentProviderOperation.newInsert(ContactsContract.Data.CONTENT_URI)
-                        .withValueBackReference(ContactsContract.RawContacts.Data.RAW_CONTACT_ID, 0)
-                        .withValue(ContactsContract.Data.MIMETYPE, ContactsContract.CommonDataKinds.Email.CONTENT_ITEM_TYPE)
-                        .withValue(ContactsContract.CommonDataKinds.Email.DATA, email)
-                        .withValue(ContactsContract.CommonDataKinds.Email.TYPE, ContactsContract.CommonDataKinds.Email.TYPE_WORK)
-                        .build());
-
-                try {
-                    ContentProviderResult[] results = getContentResolver().applyBatch(ContactsContract.AUTHORITY, contact);
-                    Toast.makeText(context, "Contact added", Toast.LENGTH_LONG).show();
-                } catch (Exception e) {
-                    e.printStackTrace();
-                }
-            }
-
-
 }
